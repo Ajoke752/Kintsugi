@@ -1,22 +1,19 @@
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Target, CheckCircle2, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
-// Base API URL: allow override with Vite env `VITE_API_URL`
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const API_BASE = (import.meta as any).VITE_API_URL ?? "http://localhost:5000";
-/* eslint-enable @typescript-eslint/no-explicit-any */
 import { useAuth } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 interface ActionItem {
   id: string;
   text: string;
-  priority: "high" | "medium" | "low"; // Mapped from category in backend if needed, or default
+  priority: "high" | "medium" | "low";
   completed: boolean;
-  category?: string; // Added to match your backend schema
+  category?: string;
 }
 
 interface ActionPlan {
@@ -32,7 +29,7 @@ const ActionPlans = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  // Local state for optimistic updates (immediate UI feedback)
+  // Local state for optimistic updates
   const [completedActions, setCompletedActions] = useState<Set<string>>(
     new Set()
   );
@@ -40,46 +37,61 @@ const ActionPlans = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const token = await getToken();
-        // Use your REAL backend URL. If locally, likely http://localhost:5000
-        const res = await fetch(`${API_BASE}/api/dashboard`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        let token: string | null = null;
+        try {
+          token = await getToken();
+        } catch (tokErr) {
+          // Not signed in or token unavailable — continue without token (useful for dev)
+          console.debug("getToken unavailable:", tokErr);
+          token = null;
+        }
 
-        if (!res.ok) throw new Error("Failed to fetch mission data");
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+
+        // Ensure this URL matches your backend port (default 5000)
+        let res = await fetch(`${API_BASE}/api/dashboard`, { headers });
+
+        // If backend returns 401, try again without auth to support local SKIP_AUTH dev mode
+        if (res.status === 401) {
+          console.warn(
+            "Dashboard returned 401; retrying without Authorization header (dev fallback)"
+          );
+          res = await fetch(`${API_BASE}/api/dashboard`);
+        }
+
+        if (!res.ok)
+          throw new Error(
+            `Failed to fetch mission data (status=${res.status})`
+          );
 
         const data = await res.json();
 
         if (data.activeMission) {
-          // Transform backend data to frontend structure
           const mission = data.activeMission;
 
-          // 1. Initialize completed set based on backend data
+          // Initialize completed set
           const completedSet = new Set<string>();
-          /* eslint-disable @typescript-eslint/no-explicit-any */
           mission.protocol.forEach((task: any) => {
             if (task.isCompleted) completedSet.add(task._id);
           });
           setCompletedActions(completedSet);
 
-          // 2. Format the plan
+          // Format the plan
           const currentPlan: ActionPlan = {
             id: mission._id,
             debrief_date: mission.createdAt,
             actions: mission.protocol.map((task: any) => ({
               id: task._id,
               text: task.action,
-              priority: "high", // Defaulting to high for tactical importance
+              priority: "high",
               category: task.category,
               completed: task.isCompleted,
             })),
-            /* eslint-enable @typescript-eslint/no-explicit-any */
           };
           setPlans([currentPlan]);
         } else {
-          setPlans([]); // No active mission found
+          setPlans([]);
         }
       } catch (err) {
         console.error(err);
@@ -93,28 +105,48 @@ const ActionPlans = () => {
   }, [getToken]);
 
   const toggleAction = async (planId: string, actionId: string) => {
-    // 1. Optimistic Update (Update UI immediately)
+    // Optimistic Update
     setCompletedActions((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(actionId)) {
-        newSet.delete(actionId); // Uncheck
+        newSet.delete(actionId);
       } else {
-        newSet.add(actionId); // Check
+        newSet.add(actionId);
       }
       return newSet;
     });
 
-    // 2. Send to Backend
+    // Send to Backend
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/debrief/${planId}/complete`, {
+      let token: string | null = null;
+      try {
+        token = await getToken();
+      } catch (tokErr) {
+        console.debug("getToken unavailable for toggleAction:", tokErr);
+        token = null;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      let res = await fetch(`${API_BASE}/api/debrief/${planId}/complete`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({ taskId: actionId }),
       });
+
+      if (res.status === 401) {
+        console.warn(
+          "PATCH debrief returned 401; retrying without Authorization header (dev fallback)"
+        );
+        res = await fetch(`${API_BASE}/api/debrief/${planId}/complete`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ taskId: actionId }),
+        });
+      }
 
       if (!res.ok) throw new Error("Server failed to save");
 
@@ -154,7 +186,7 @@ const ActionPlans = () => {
     return (
       <div className="p-12 text-center text-destructive border border-destructive/20 rounded-lg bg-destructive/5">
         <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
-        <p>Secure connection failed. Please retry.</p>
+        <p>Secure connection failed. Ensure Backend is running on port 5000.</p>
       </div>
     );
   }
