@@ -6,8 +6,6 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { useToast } from "@/hooks/use-toast";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
 interface ActionItem {
   id: string;
   text: string;
@@ -23,7 +21,7 @@ interface ActionPlan {
 }
 
 const ActionPlans = () => {
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth(); // Added isLoaded, isSignedIn
   const { toast } = useToast();
   const [plans, setPlans] = useState<ActionPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,27 +35,27 @@ const ActionPlans = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
+        // Try to get a token if possible; if not available, we'll still attempt to fetch
         let token: string | null = null;
         try {
           token = await getToken();
         } catch (tokErr) {
-          // Not signed in or token unavailable — continue without token (useful for dev)
-          console.debug("getToken unavailable:", tokErr);
+          console.debug("getToken unavailable or user not signed in:", tokErr);
           token = null;
         }
 
         const headers: Record<string, string> = {};
         if (token) headers.Authorization = `Bearer ${token}`;
 
-        // Ensure this URL matches your backend port (default 5000)
-        let res = await fetch(`${API_BASE}/api/dashboard`, { headers });
+        // Use relative path so Vite dev server proxy forwards to backend in dev
+        let res = await fetch(`/api/dashboard`, { headers });
 
-        // If backend returns 401, try again without auth to support local SKIP_AUTH dev mode
-        if (res.status === 401) {
+        // If 401 and we previously sent a token, retry without Authorization for dev fallback
+        if (res.status === 401 && token) {
           console.warn(
             "Dashboard returned 401; retrying without Authorization header (dev fallback)"
           );
-          res = await fetch(`${API_BASE}/api/dashboard`);
+          res = await fetch(`/api/dashboard`);
         }
 
         if (!res.ok)
@@ -102,7 +100,7 @@ const ActionPlans = () => {
     };
 
     fetchDashboardData();
-  }, [getToken]);
+  }, [getToken, isLoaded, isSignedIn]); // Added dependencies
 
   const toggleAction = async (planId: string, actionId: string) => {
     // Optimistic Update
@@ -131,17 +129,18 @@ const ActionPlans = () => {
       };
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      let res = await fetch(`${API_BASE}/api/debrief/${planId}/complete`, {
+      let res = await fetch(`/api/debrief/${planId}/complete`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ taskId: actionId }),
       });
 
-      if (res.status === 401) {
+      // Retry without Authorization for dev fallback
+      if (res.status === 401 && token) {
         console.warn(
           "PATCH debrief returned 401; retrying without Authorization header (dev fallback)"
         );
-        res = await fetch(`${API_BASE}/api/debrief/${planId}/complete`, {
+        res = await fetch(`/api/debrief/${planId}/complete`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ taskId: actionId }),
@@ -187,6 +186,7 @@ const ActionPlans = () => {
       <div className="p-12 text-center text-destructive border border-destructive/20 rounded-lg bg-destructive/5">
         <AlertTriangle className="w-12 h-12 mx-auto mb-4" />
         <p>Secure connection failed. Ensure Backend is running on port 5000.</p>
+        <p className="text-xs mt-2 opacity-70">Error Code: 401 Unauthorized</p>
       </div>
     );
   }

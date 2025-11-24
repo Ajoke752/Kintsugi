@@ -37,4 +37,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+console.log(
+  `[server] NODE_ENV=${process.env.NODE_ENV}, SKIP_AUTH=${process.env.SKIP_AUTH}`
+);
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
