@@ -5,9 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { SignedIn, SignedOut } from "@clerk/clerk-react";
 import { AuthProvider } from "@/lib/clerk";
-import Landing from "./src/pages/Landing";
-import Dashboard from "./src/pages/Dashboard";
-import NotFound from "./src/pages/NotFound";
+import Landing from "@/pages/Landing";
+import Dashboard from "@/pages/Dashboard";
+import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 

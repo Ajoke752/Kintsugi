@@ -2,6 +2,8 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Mic, Square, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@clerk/clerk-react";
+
 
 const VoiceRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -11,6 +13,7 @@ const VoiceRecorder = () => {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
   const { toast } = useToast();
+  
 
   const startRecording = async () => {
     try {
@@ -72,41 +75,48 @@ const VoiceRecorder = () => {
     }
   };
 
-  const processAudio = async (audioBlob: Blob) => {
-    setIsProcessing(true);
-    
-    try {
-      // Convert blob to base64
-      const reader = new FileReader();
-      reader.readAsDataURL(audioBlob);
-      reader.onloadend = async () => {
-        const base64Audio = reader.result?.toString().split(",")[1];
-        
-        // TODO: Send to your Express backend API
-        // const response = await fetch('YOUR_BACKEND_URL/api/debrief', {
-        //   method: 'POST',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({ audio: base64Audio })
-        // });
-        
-        // Mock processing for now
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        toast({
-          title: "Debrief processed",
-          description: "Your insights and action plan are ready.",
-        });
-      };
-    } catch (error) {
-      toast({
-        title: "Processing failed",
-        description: "Please try recording again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+ const { getToken } = useAuth(); // Get the auth hook
+
+ const processAudio = async (audioBlob: Blob) => {
+   setIsProcessing(true);
+
+   try {
+     const token = await getToken(); // Get the JWT for the backend
+
+     // 1. Create Form Data (Not JSON)
+     const formData = new FormData();
+     formData.append("audio", audioBlob, "debrief.webm"); // Must be "audio" to match backend upload.single("audio")
+
+     // 2. Send to Real Backend
+     const response = await fetch("http://localhost:5000/api/debrief", {
+       method: "POST",
+       headers: {
+         Authorization: `Bearer ${token}`, // Authenticate request
+         // Note: Do NOT set Content-Type manually for FormData, fetch does it automatically
+       },
+       body: formData,
+     });
+
+     if (!response.ok) throw new Error("Upload failed");
+
+     const data = await response.json();
+     console.log("AI Protocol:", data); // Debugging
+
+     toast({
+       title: "Mission Protocol Generated",
+       description: `Mood: ${data.moodDetected}. Check your Action Plans.`,
+     });
+   } catch (error) {
+     console.error(error);
+     toast({
+       title: "Transmission Failed",
+       description: "Could not reach Command Center (Backend).",
+       variant: "destructive",
+     });
+   } finally {
+     setIsProcessing(false);
+   }
+ };
 
   return (
     <div className="flex flex-col items-center justify-center space-y-8 py-8">

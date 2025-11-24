@@ -5,7 +5,7 @@ const fs = require("fs");
 const OpenAI = require("openai");
 const User = require("../models/User");
 const Log = require("../models/log");
-// const { ClerkExpressRequireAuth } = require("@clerk/clerk-sdk-node");
+const { ClerkExpressRequireAuth } = require("@clerk/clerk-sdk-node");
 
 // Setup Multer (Temp storage for audio)
 const upload = multer({ dest: "uploads/" });
@@ -30,11 +30,11 @@ Return a JSON object with this EXACT structure:
 router.post(
   "/",
   upload.single("audio"),
+  ClerkExpressRequireAuth(),
   async (req, res) => {
     try {
-      // Use a test user ID for now
-      const userId = 'test-user';
-
+      const { auth } = req;
+      const userId = auth.userId;
       if (!req.file)
         return res.status(400).json({ error: "No audio intel received." });
 

@@ -27,6 +27,9 @@ mongoose
 app.use("/api/debrief", debriefRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 
+// Simple healthcheck for local testing
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+
 // Global Error Handler (for Clerk auth errors)
 app.use((err, req, res, next) => {
   console.error(err.stack);
